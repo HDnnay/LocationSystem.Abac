@@ -1,8 +1,10 @@
-using Abac.WebApi;
+﻿using Abac.WebApi;
 using Abac.WebApi.Authorization;
 using Abac.WebApi.Repositories;
+using Casbin;
 using Casbin.AspNetCore.Authorization;
 using Casbin.AspNetCore.Authorization.Transformers;
+using Casbin.Persist.Adapter.EFCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -20,20 +22,19 @@ builder.Services.AddCasbin(option =>
     option.DefaultModelPath = "";
     option.DefaultPolicyPath = "";
 });
-// ���� EF Core InMemory ���ݿ⣨������ʾ��
 var conn = builder.Configuration.GetConnectionString("SqlServerConnectionString");
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseSqlServer(conn));
-
-// ע��ִ��ͷ���
+builder.Services.AddDbContext<LocalCasbinDbContext>(options =>
+{
+    options.UseSqlServer(conn, m => m.MigrationsAssembly(typeof(Program).Assembly));
+});
 builder.Services.AddScoped<IPolicyRepository, EfCorePolicyRepository>();
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-// ע����Ȩ������
 builder.Services.AddScoped<IAuthorizationHandler, AbacAuthorizationHandler>();
 
-// ע���ڴ滺�棨���ڻ�������ı���ʽ��
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 
@@ -64,7 +65,6 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// ע����Ȩ����
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("DocumentAccessPolicy", policy =>
@@ -76,8 +76,9 @@ builder.Services.AddCasbinAuthorization(options =>
 {
     options.PreferSubClaimType = ClaimTypes.Name;
     options.DefaultModelPath = Path.Combine("CasbinConf", "basic_model.conf");
-    options.DefaultPolicyPath = Path.Combine("CasbinConf", "basic_policy.csv");
-
+    //options.DefaultPolicyPath = Path.Combine("CasbinConf", "basic_policy.csv");
+    options.DefaultEnforcerFactory = (p, m) =>
+                    new Enforcer(m, new EFCoreAdapter<Guid>(p.GetRequiredService<LocalCasbinDbContext>()));
     // Use BasicRequestTransformer for simple policy matching
     // This will match the policy format: p, sub, obj, act
     options.DefaultRequestTransformerType = typeof(BasicRequestTransformer);

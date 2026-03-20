@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Casbin.AspNetCore" Version="1.6.0" />
+    <PackageReference Include="Casbin.NET.Adapter.EFCore" Version="1.0.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.5" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.5">
