@@ -2,10 +2,12 @@ using Abac.WebApi;
 using Abac.WebApi.Authorization;
 using Abac.WebApi.Repositories;
 using Casbin.AspNetCore.Authorization;
+using Casbin.AspNetCore.Authorization.Transformers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.Security.Claims;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,24 +20,28 @@ builder.Services.AddCasbin(option =>
     option.DefaultModelPath = "";
     option.DefaultPolicyPath = "";
 });
-// Ìí¼Ó EF Core InMemory Êý¾Ý¿â£¨±ãÓÚÑÝÊ¾£©
+// ï¿½ï¿½ï¿½ï¿½ EF Core InMemory ï¿½ï¿½ï¿½Ý¿â£¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½
 var conn = builder.Configuration.GetConnectionString("SqlServerConnectionString");
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseSqlServer(conn));
-// ×¢²á²Ö´¢ºÍ·þÎñ
+
+// ×¢ï¿½ï¿½Ö´ï¿½ï¿½Í·ï¿½ï¿½ï¿½
 builder.Services.AddScoped<IPolicyRepository, EfCorePolicyRepository>();
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-// ×¢²áÊÚÈ¨´¦ÀíÆ÷
+// ×¢ï¿½ï¿½ï¿½ï¿½È¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 builder.Services.AddScoped<IAuthorizationHandler, AbacAuthorizationHandler>();
 
-// ×¢²áÄÚ´æ»º´æ£¨ÓÃÓÚ»º´æ±àÒëºóµÄ±í´ïÊ½£©
+// ×¢ï¿½ï¿½ï¿½Ú´æ»ºï¿½æ£¨ï¿½ï¿½ï¿½Ú»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä±ï¿½ï¿½ï¿½Ê½ï¿½ï¿½
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 
-// ÅäÖÃ JWT ÈÏÖ¤£¨ÑÝÊ¾ÓÃ£©
-var key = Encoding.ASCII.GetBytes("your-secret-key-at-least-16-chars-long");
+// Configure JWT Authentication
+var jwtSettings = builder.Configuration.GetSection("Jwt");
+var secretKey = jwtSettings["SecretKey"] ?? "your-secret-key-at-least-16-chars-long";
+var key = Encoding.ASCII.GetBytes(secretKey);
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -43,25 +49,42 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = false;
+    options.RequireHttpsMetadata = builder.Environment.IsProduction();
     options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(key),
-        ValidateIssuer = false,
-        ValidateAudience = false
+        ValidateIssuer = builder.Environment.IsProduction(),
+        ValidIssuer = jwtSettings["Issuer"],
+        ValidateAudience = builder.Environment.IsProduction(),
+        ValidAudience = jwtSettings["Audience"],
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero
     };
 });
 
-// ×¢²áÊÚÈ¨²ßÂÔ
+// ×¢ï¿½ï¿½ï¿½ï¿½È¨ï¿½ï¿½ï¿½ï¿½
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("DocumentAccessPolicy", policy =>
         policy.Requirements.Add(new AbacRequirement()));
 });
+
+//Add Casbin Authorization
+builder.Services.AddCasbinAuthorization(options =>
+{
+    options.PreferSubClaimType = ClaimTypes.Name;
+    options.DefaultModelPath = Path.Combine("CasbinConf", "basic_model.conf");
+    options.DefaultPolicyPath = Path.Combine("CasbinConf", "basic_policy.csv");
+
+    // Use BasicRequestTransformer for simple policy matching
+    // This will match the policy format: p, sub, obj, act
+    options.DefaultRequestTransformerType = typeof(BasicRequestTransformer);
+});
+
 var app = builder.Build();
-// ³õÊ¼»¯²âÊÔÊý¾Ý
+// ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -78,6 +101,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseAuthentication();
+//Casbin
 app.UseCasbinAuthorization();
 app.UseAuthorization();
 

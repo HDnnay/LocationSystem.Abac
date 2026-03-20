@@ -1,4 +1,5 @@
 ﻿using Abac.WebApi.Repositories;
+using Casbin.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,7 +19,7 @@ namespace Abac.WebApi.Controllers
         }
 
         [HttpGet("{id}")]
-        [Authorize] // 至少需要认证
+        [CasbinAuthorize("GetDocument", "Get")]
         public async Task<IActionResult> GetDocument(Guid id)
         {
             var document = await _docRepo.GetByIdAsync(id);

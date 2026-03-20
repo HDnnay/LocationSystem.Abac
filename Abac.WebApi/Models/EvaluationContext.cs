@@ -1,4 +1,4 @@
-﻿namespace Abac.WebApi.Models
+namespace Abac.WebApi.Models
 {
     public class EvaluationContext
     {
@@ -9,7 +9,7 @@
 
     public class UserAttributes
     {
-        public string Id { get; set; } = string.Empty;
+        public Guid Id { get; set; }
         public string Department { get; set; } = string.Empty;
         public int Level { get; set; }
         public List<string> Roles { get; set; } = new();

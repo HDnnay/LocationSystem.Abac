@@ -1,4 +1,4 @@
-﻿using Abac.WebApi.Models;
+using Abac.WebApi.Models;
 using Abac.WebApi.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Caching.Memory;
@@ -82,11 +82,14 @@ namespace Abac.WebApi.Authorization
 
         private EvaluationContext BuildEvaluationContext(ClaimsPrincipal user, Document document)
         {
+            var userIdClaim = user.FindFirstValue(ClaimTypes.NameIdentifier);
+            Guid userId = Guid.TryParse(userIdClaim, out var parsedId) ? parsedId : Guid.Empty;
+            
             return new EvaluationContext
             {
                 User = new UserAttributes
                 {
-                    Id = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "",
+                    Id = userId,
                     Department = user.FindFirstValue("department") ?? "",
                     Level = int.Parse(user.FindFirstValue("level") ?? "0"),
                     Roles = user.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList()

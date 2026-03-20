@@ -1,0 +1,7 @@
+# Policy for GetDocument access
+p, wang, GetDocument, GET
+
+# Example policies (commented out)
+# p, alice@example.com, BasicTest, Get
+# p, alice@example.com, /attribtest, GET
+# p, alice@example.com, /home/privacy, GET
