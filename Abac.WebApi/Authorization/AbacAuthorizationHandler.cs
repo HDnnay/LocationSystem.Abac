@@ -2,6 +2,7 @@ using Abac.WebApi.Models;
 using Abac.WebApi.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Caching.Memory;
+using System.Collections.Concurrent;
 using System.Linq.Dynamic.Core;
 using System.Security.Claims;
 
@@ -12,6 +13,7 @@ namespace Abac.WebApi.Authorization
         private readonly IPolicyRepository _policyRepo;
         private readonly IMemoryCache _cache;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly ConcurrentDictionary<string, Lazy<Task<List<Policy>>>> _policiesCache;
 
         public AbacAuthorizationHandler(
             IPolicyRepository policyRepo,
@@ -21,6 +23,76 @@ namespace Abac.WebApi.Authorization
             _policyRepo = policyRepo;
             _cache = cache;
             _httpContextAccessor = httpContextAccessor;
+            _policiesCache = new ConcurrentDictionary<string, Lazy<Task<List<Policy>>>>();
+        }
+
+        /// <summary>
+        /// 清理指定资源类型的策略缓存
+        /// </summary>
+        /// <param name="resourceType">资源类型</param>
+        /// <returns>是否成功清理</returns>
+        public bool RefreshPoliciesCache(string resourceType)
+        {
+            return _policiesCache.TryRemove(resourceType, out _);
+        }
+
+        /// <summary>
+        /// 清理所有资源类型的策略缓存
+        /// </summary>
+        public void RefreshAllPoliciesCache()
+        {
+            _policiesCache.Clear();
+        }
+
+        /// <summary>
+        /// 获取当前缓存的所有资源类型
+        /// </summary>
+        /// <returns>已缓存的资源类型列表</returns>
+        public IReadOnlyCollection<string> GetCachedResourceTypes()
+        {
+            return _policiesCache.Keys.ToList().AsReadOnly();
+        }
+
+        /// <summary>
+        /// 强制重新加载指定资源类型的策略
+        /// </summary>
+        /// <param name="resourceType">资源类型</param>
+        /// <returns>重新加载后的策略列表</returns>
+        public async Task<List<Policy>> ForceReloadPoliciesAsync(string resourceType)
+        {
+            RefreshPoliciesCache(resourceType);
+            return await GetPoliciesByResourceTypeAsync(resourceType);
+        }
+
+        private async Task<List<Policy>> GetPoliciesByResourceTypeAsync(string resourceType)
+        {
+            // 双重检查：先尝试从缓存获取
+            if (_policiesCache.TryGetValue(resourceType, out var existingLazy))
+            {
+                return await existingLazy.Value;
+            }
+
+            // 创建新的Lazy实例（使用ExecutionAndPublication确保线程安全）
+            var newLazy = new Lazy<Task<List<Policy>>>(async () =>
+            {
+                try
+                {
+                    var policies = await _policyRepo.GetPoliciesByResourceTypeAsync(resourceType);
+                    return policies.OrderBy(p => p.Priority).ToList();
+                }
+                catch (Exception)
+                {
+                    // 记录异常并返回空列表，避免阻塞后续请求
+                    return new List<Policy>();
+                }
+            }, LazyThreadSafetyMode.ExecutionAndPublication);
+
+            // 原子性地添加到缓存
+            var lazy = _policiesCache.GetOrAdd(resourceType, newLazy);
+            
+            // 如果添加的是我们创建的实例，返回它的值
+            // 如果添加的是其他线程创建的实例，返回那个实例的值
+            return await lazy.Value;
         }
 
         protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, AbacRequirement requirement)
@@ -32,20 +104,27 @@ namespace Abac.WebApi.Authorization
                 return;
             }
 
-            // 获取资源对象
-            if (context.Resource is not Document document)
+            // 获取资源对象并识别资源类型
+            string resourceType;
+            object resourceObject;
+
+            switch (context.Resource)
             {
-                // 没有资源对象时，仅靠角色决策（由其他策略处理）
-                context.Succeed(requirement);
-                return;
+                case Document document:
+                    resourceType = nameof(Document);
+                    resourceObject = document;
+                    break;
+                default:
+                    // 没有匹配的资源类型时，仅靠角色决策
+                    context.Succeed(requirement);
+                    return;
             }
 
             // 构建 EvaluationContext
-            var evalContext = BuildEvaluationContext(context.User, document);
+            var evalContext = BuildEvaluationContext(context.User, resourceObject);
 
-            // 加载规则
-            var policies = await _policyRepo.GetPoliciesByResourceTypeAsync(nameof(Document));
-            var orderedPolicies = policies.OrderBy(p => p.Priority);
+            // 动态获取对应资源类型的规则
+            var orderedPolicies = await GetPoliciesByResourceTypeAsync(resourceType);
 
             bool? finalDecision = null;
             foreach (var policy in orderedPolicies)
@@ -80,11 +159,24 @@ namespace Abac.WebApi.Authorization
                 context.Fail();
         }
 
-        private EvaluationContext BuildEvaluationContext(ClaimsPrincipal user, Document document)
+        private EvaluationContext BuildEvaluationContext(ClaimsPrincipal user, object resource)
         {
             var userIdClaim = user.FindFirstValue(ClaimTypes.NameIdentifier);
             Guid userId = Guid.TryParse(userIdClaim, out var parsedId) ? parsedId : Guid.Empty;
-            
+
+            var resourceAttributes = resource switch
+            {
+                Document document => new ResourceAttributes
+                {
+                    Type = nameof(Document),
+                    OwnerId = document.OwnerId,
+                    Department = document.Department,
+                    Status = document.Status,
+                    Confidentiality = document.Confidentiality
+                },
+                _ => new ResourceAttributes { Type = resource.GetType().Name }
+            };
+
             return new EvaluationContext
             {
                 User = new UserAttributes
@@ -94,14 +186,7 @@ namespace Abac.WebApi.Authorization
                     Level = int.Parse(user.FindFirstValue("level") ?? "0"),
                     Roles = user.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList()
                 },
-                Resource = new ResourceAttributes
-                {
-                    Type = nameof(Document),
-                    OwnerId = document.OwnerId,
-                    Department = document.Department,
-                    Status = document.Status,
-                    Confidentiality = document.Confidentiality
-                },
+                Resource = resourceAttributes,
                 Environment = new EnvironmentAttributes
                 {
                     CurrentTime = DateTime.UtcNow,

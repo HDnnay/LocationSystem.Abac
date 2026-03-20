@@ -22,6 +22,10 @@ namespace Abac.WebApi.Models
         public string Department { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public string Confidentiality { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public string Sensitivity { get; set; } = string.Empty;
+        // 可以根据需要添加更多通用属性
+        public Dictionary<string, object> CustomAttributes { get; set; } = new();
     }
 
     public class EnvironmentAttributes
