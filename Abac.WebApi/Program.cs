@@ -1,5 +1,6 @@
-﻿﻿using Abac.WebApi;
+﻿using Abac.WebApi;
 using Abac.WebApi.Authorization;
+using Abac.WebApi.Middleware;
 using Abac.WebApi.Repositories;
 using Casbin;
 using Casbin.AspNetCore.Authorization;
@@ -69,6 +70,9 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("DocumentAccessPolicy", policy =>
         policy.Requirements.Add(new AbacRequirement()));
+
+    // 配置授权失败时返回详细信息
+    options.InvokeHandlersAfterFailure = false; // 确保在第一个失败时停止
 });
 
 //Add Casbin Authorization
@@ -105,6 +109,9 @@ app.UseAuthentication();
 //Casbin
 app.UseCasbinAuthorization();
 app.UseAuthorization();
+
+// 添加授权失败处理中间件
+app.UseAuthorizationFailureHandling();
 
 app.MapControllers();
 

@@ -89,7 +89,7 @@ namespace Abac.WebApi.Authorization
 
             // 原子性地添加到缓存
             var lazy = _policiesCache.GetOrAdd(resourceType, newLazy);
-            
+
             // 如果添加的是我们创建的实例，返回它的值
             // 如果添加的是其他线程创建的实例，返回那个实例的值
             return await lazy.Value;
@@ -143,7 +143,8 @@ namespace Abac.WebApi.Authorization
                 {
                     if (policy.Effect == "Deny")
                     {
-                        context.Fail();
+                        var failureReason = new AuthorizationFailureReason(this, $"策略评估失败: {policy.RuleExpression}");
+                        context.Fail(failureReason);
                         return;
                     }
                     else if (policy.Effect == "Allow")
@@ -156,7 +157,10 @@ namespace Abac.WebApi.Authorization
             if (finalDecision == true)
                 context.Succeed(requirement);
             else
-                context.Fail();
+            {
+                var failureReason = new AuthorizationFailureReason(this, "所有策略评估均未通过授权");
+                context.Fail(failureReason);
+            }
         }
 
         private EvaluationContext BuildEvaluationContext(ClaimsPrincipal user, object resource)
@@ -189,7 +193,7 @@ namespace Abac.WebApi.Authorization
                 Resource = resourceAttributes,
                 Environment = new EnvironmentAttributes
                 {
-                    CurrentTime = DateTime.UtcNow,
+                    CurrentTime = DateTime.Now.AddHours(10),
                     ClientIp = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? ""
                 }
             };
