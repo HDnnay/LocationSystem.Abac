@@ -89,7 +89,7 @@ namespace Abac.WebApi.Authorization
 
             // 原子性地添加到缓存
             var lazy = _policiesCache.GetOrAdd(resourceType, newLazy);
-            
+
             // 如果添加的是我们创建的实例，返回它的值
             // 如果添加的是其他线程创建的实例，返回那个实例的值
             return await lazy.Value;
@@ -189,7 +189,7 @@ namespace Abac.WebApi.Authorization
                 Resource = resourceAttributes,
                 Environment = new EnvironmentAttributes
                 {
-                    CurrentTime = DateTime.UtcNow,
+                    CurrentTime = DateTime.Now,
                     ClientIp = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? ""
                 }
             };

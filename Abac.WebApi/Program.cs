@@ -1,4 +1,4 @@
-﻿﻿using Abac.WebApi;
+﻿using Abac.WebApi;
 using Abac.WebApi.Authorization;
 using Abac.WebApi.Repositories;
 using Casbin;
@@ -85,7 +85,6 @@ builder.Services.AddCasbinAuthorization(options =>
 });
 
 var app = builder.Build();
-// ��ʼ����������
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -100,10 +99,11 @@ if (app.Environment.IsDevelopment())
         options.SwaggerEndpoint("/openapi/v1.json", "v1");
     });
 }
-
+//认证
 app.UseAuthentication();
-//Casbin
+//Casbin 授权
 app.UseCasbinAuthorization();
+//系统自带授权
 app.UseAuthorization();
 
 app.MapControllers();

@@ -1,4 +1,4 @@
-﻿using Abac.WebApi.Repositories;
+﻿﻿using Abac.WebApi.Repositories;
 using Casbin.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,21 +17,13 @@ namespace Abac.WebApi.Controllers
             _authService = authService;
             _docRepo = docRepo;
         }
-
         [HttpGet("{id}")]
-        [CasbinAuthorize("GetDocument", "Get")]
-        public async Task<IActionResult> GetDocument(Guid id)
+        [CasbinAuthorize("getdocument", "GET")]
+        public async Task<IActionResult> Get(Guid id)
         {
-            var document = await _docRepo.GetByIdAsync(id);
-            if (document == null)
-                return NotFound();
-
-            var authResult = await _authService.AuthorizeAsync(User, document, Policies.DocumentAccess);
-
-            if (!authResult.Succeeded)
-                return Forbid();
-
-            return Ok(document);
+            var model = await _docRepo.GetByIdAsync(id);
+            return Ok(model);
         }
+
     }
 }

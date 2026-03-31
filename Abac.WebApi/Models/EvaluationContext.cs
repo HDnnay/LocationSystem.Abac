@@ -32,6 +32,9 @@ namespace Abac.WebApi.Models
     {
         public DateTime CurrentTime { get; set; }
         public string ClientIp { get; set; } = string.Empty;
+        public string? Agent { get; set; }
+
+
     }
 
 }
