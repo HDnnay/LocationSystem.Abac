@@ -143,7 +143,8 @@ namespace Abac.WebApi.Authorization
                 {
                     if (policy.Effect == "Deny")
                     {
-                        context.Fail();
+                        var failureReason = new AuthorizationFailureReason(this, $"策略评估失败: {policy.RuleExpression}");
+                        context.Fail(failureReason);
                         return;
                     }
                     else if (policy.Effect == "Allow")
@@ -156,7 +157,10 @@ namespace Abac.WebApi.Authorization
             if (finalDecision == true)
                 context.Succeed(requirement);
             else
-                context.Fail();
+            {
+                var failureReason = new AuthorizationFailureReason(this, "所有策略评估均未通过授权");
+                context.Fail(failureReason);
+            }
         }
 
         private EvaluationContext BuildEvaluationContext(ClaimsPrincipal user, object resource)
